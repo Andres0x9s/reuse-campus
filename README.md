@@ -76,4 +76,4 @@ La prueba crea datos en la base local, verifica estados, permisos, duplicados, s
 Estado de verificación del material inicial: sintaxis JavaScript y JSON revisados; instalación npm, compilación Angular, ejecución SQL y pruebas integradas realizadas en entorno local
 
 ## Declaración de uso de inteligencia artificial
-**Completar antes de entregar, con información verdadera.** La plantilla y el código inicial de este material fueron generados con ayuda de ChatGPT, incluyendo propuesta de esquema SQL realizada en workbrech MySQL, módulos Express, documentación y prueba de integración. Cada estudiante debe registrar qué partes utilizó, qué adaptaciones/correcciones hizo personalmente y qué comandos y pruebas ejecutó, con resultados verificables. Añadir otras herramientas de IA si se utilizaron. No atribuir a trabajo propio código generado sin declarar su origen. Durante la interrogación no está permitido usar IA.
+ La plantilla y el código inicial de este material fueron generados con ayuda de ChatGPT, incluyendo propuesta de esquema SQL realizada en workbrech MySQL, módulos Express y prueba de integración. Cada estudiante realizo correcciones hizo personalmente.
