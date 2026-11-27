@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const base=process.env.TEST_API||'http://localhost:3000/api';
+const clave='Demo1234!';
+async function request(path,method='GET',token,body,status=200){
+ const r=await fetch(base+path,{method,headers:{...(token?{Authorization:`Bearer ${token}`} : {}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+ const data=await r.json();assert.equal(r.status,status,`${method} ${path}: ${JSON.stringify(data)}`);return data;
+}
+async function login(correo,password=clave){return (await request('/auth/login','POST',null,{correo,password})).token;}
+test('Flujo completo, permisos, errores y concurrencia (API local en ejecución)',async()=>{
+ await request('/health');
+ const admin=await login('admin@demo.cl');
+ const a=await login('ana@demo.cl'),b=await login('bruno@demo.cl'),c=await login('carla@demo.cl');
+ const data={titulo:`Libro prueba ${Date.now()}`,descripcion:'Libro de informática',categoria:'Libros',modalidad:'DONACION'};
+ await request('/publicaciones','POST',null,data,401);
+ await request('/usuarios','GET',a,undefined,403);
+ await request('/publicaciones','POST',a,{...data,titulo:''},400);
+ const p=await request('/publicaciones','POST',a,data,201);
+ const path=`/publicaciones/${p.id}`;
+ await request(path,'PUT',b,data,403);
+ await request(path,'PUT',a,{...data,titulo:'Libro actualizado'});
+ await request('/publicaciones/2147483647','GET',a,undefined,404);
+ const body={publicacionId:p.id,mensaje:'Me interesa'};
+ await request('/solicitudes','POST',a,body,409);
+ const s1=await request('/solicitudes','POST',b,body,201);
+ await request('/solicitudes','POST',b,body,409);
+ const s2=await request('/solicitudes','POST',c,body,201);
+ await request(`/solicitudes/${s1.id}`,'PUT',b,{mensaje:'Puedo retirarlo mañana'});
+ await request(`/solicitudes/${s1.id}/aceptar`,'PATCH',b,{},403);
+ // Dos aceptaciones simultáneas: exactamente una debe triunfar.
+ const results=await Promise.all([s1,s2].map(s=>fetch(`${base}/solicitudes/${s.id}/aceptar`,{method:'PATCH',headers:{Authorization:`Bearer ${a}`,'Content-Type':'application/json'},body:'{}'})));
+ assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+ assert.equal((await request(path,'GET',a)).estado,'RESERVADA');
+ const solicitudes=(await request('/solicitudes','GET',a)).filter(s=>s.publicacionId===p.id);
+ assert.deepEqual(solicitudes.map(s=>s.estado).sort(),['ACEPTADA','RECHAZADA']);
+ const aceptada=solicitudes.find(s=>s.estado==='ACEPTADA');
+ await request(`/solicitudes/${aceptada.id}`,'DELETE',aceptada.id===s1.id?b:c,undefined,409);
+ await request('/solicitudes','POST',b,body,409);
+ const entregas=(await request('/entregas','GET',admin)).filter(e=>e.publicacionId===p.id);
+ assert.equal(entregas.length,1); assert.equal(entregas[0].estado,'PENDIENTE');
+ const entrega=`/entregas/${entregas[0].id}/completar`;
+ await request(entrega,'PATCH',b,{},403);
+ await request(entrega,'PATCH',a,{});
+ assert.equal((await request(path,'GET',a)).estado,'ENTREGADA');
+ assert.equal((await request(`/entregas/${entregas[0].id}`,'GET',a)).estado,'COMPLETADA');
+ await request(entrega,'PATCH',a,{},409);
+ await request('/solicitudes','POST',c,body,409);
+ const p2=await request('/publicaciones','POST',a,data,201);
+ const s3=await request('/solicitudes','POST',b,{...body,publicacionId:p2.id},201);
+ await request(`/solicitudes/${s3.id}`,'DELETE',b);
+ const s4=await request('/solicitudes','POST',b,{...body,publicacionId:p2.id},201);
+ await request(`/solicitudes/${s4.id}/rechazar`,'PATCH',a,{});
+ const s5=await request('/solicitudes','POST',c,{...body,publicacionId:p2.id},201);
+ await request(`/publicaciones/${p2.id}`,'DELETE',a);
+ assert.equal((await request(`/solicitudes/${s5.id}`,'GET',a)).estado,'RECHAZADA');
+ await request('/solicitudes','POST',b,{...body,publicacionId:p2.id},409);
+ const correo=`prueba${Date.now()}@demo.cl`;
+ const u=await request('/usuarios','POST',admin,{nombre:'Usuario de prueba',correo,password:clave,rol:'USUARIO'},201);
+ await request(`/usuarios/${u.id}`,'PUT',admin,{nombre:'Actualizado',correo,rol:'USUARIO',estado:'ACTIVO'});
+ await request(`/usuarios/${u.id}`,'DELETE',admin);
+ await request('/auth/login','POST',null,{correo,password:clave},401);
+});
